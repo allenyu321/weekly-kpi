@@ -1,0 +1,46 @@
+name: Weekly KPI Refresh
+
+# Runs every Friday 15:00 UTC = 08:00 PT (PDT) / 07:00 PT (PST).
+# GitHub Actions cron uses UTC only and does not observe DST.
+on:
+  schedule:
+    - cron: "0 15 * * 5"
+  workflow_dispatch:   # allow manual "Run workflow" button for ad-hoc refresh
+
+permissions:
+  contents: write      # needed to commit the updated kpis.json
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --no-cache-dir requests==2.32.3
+
+      - name: Fetch Shopify metrics
+        env:
+          SHOPIFY_SHOP: ${{ secrets.SHOPIFY_SHOP }}
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+          SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
+        run: python scripts/refresh_kpis.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add kpis.json
+          if git diff --cached --quiet; then
+            echo "No change in kpis.json — skipping commit."
+          else
+            git commit -m "auto-update kpis.json ($(date -u +'%Y-%m-%dT%H:%M:%SZ'))"
+            git push
+          fi
